@@ -204,7 +204,7 @@ class IOT {
                     opcode: 'iotwork',
                     blockType: BlockType.COMMAND,
 
-                    text: 'Iot work',
+                    text: 'Iot work@micropy',
                     func: 'noop',
                     gen: {
                         micropy: this.iotWork_py
@@ -432,6 +432,23 @@ class IOT {
     
     iotWork_py (gen, block){
         iotCommonPy(gen);
+        gen.functions_["iotserial"] = `linebuf = ''
+def iotSerialWork():
+    global linebuf
+    if uart.any():
+        a = uart.readline()
+        linebuf += str(a, 'utf8')
+        if linebuf.endswith('\\r'):
+            tmp = linebuf.split(' ')
+            linebuf = ''
+            if tmp[0] == 'WF':
+                print(tmp)
+                if tmp[1] == '3' and tmp[2] == '5':
+                    topic = tmp[3]
+                    topic = topic.replace('/', '_')
+                    data = tmp[4].strip()
+                    cmdline = 'GOT%s(data)' %topic
+                    eval(cmdline, globals(), {'data': data})`
         return `iotSerialWork()\n`;
     }
 
