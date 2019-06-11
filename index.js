@@ -24,6 +24,14 @@ const iotCommon = gen => {
     gen.loopCodes_['iot'] = 'iot.loop()';
 };
 
+const iotCommonPy = gen => {
+    gen.functions_['iot_init'] = '# iot init process\nuart.write("\\n\\n")\nsleep(500)\nuart.write("WF 10 4 0 2 3 4 5\\n")\nsleep(500)\n';
+}
+
+const cmdTrim = cmd => {
+    return cmd.replace(/"/g, '').trim();
+}
+
 class IOT {
     constructor (runtime){
         this.runtime = runtime;
@@ -63,7 +71,8 @@ class IOT {
                     },
                     func: 'mqttConnect',
                     gen: {
-                        arduino: this.connAr
+                        arduino: this.connAr,
+                        micropy: this.connPy
                     }
                 },
                 {
@@ -91,7 +100,8 @@ class IOT {
                     },
                     func: 'mqttConnectCloud',
                     gen: {
-                        arduino: this.connAr
+                        arduino: this.connAr,
+                        micropy: this.connPy
                     }
                 },
                 {
@@ -111,7 +121,8 @@ class IOT {
                     },
                     func: 'noop',
                     gen: {
-                        arduino: this.connApAr
+                        arduino: this.connApAr,
+                        micropy: this.connApPy
                     }
                 },
                 {
@@ -126,12 +137,13 @@ class IOT {
                         },
                         DATA: {
                             type: ArgumentType.STRING,
-                            defaultValue: 'hello world'
+                            defaultValue: 'helloworld'
                         }
                     },
                     func: 'mqttPub',
                     gen: {
-                        arduino: this.pubAr
+                        arduino: this.pubAr,
+                        micropy: this.pubPy
                     }
                 },
                 {
@@ -147,7 +159,8 @@ class IOT {
                     },
                     func: 'mqttSub',
                     gen: {
-                        arduino: this.subAr
+                        arduino: this.subAr,
+                        micropy: this.subPy
                     }
                 },
                 {
@@ -164,7 +177,8 @@ class IOT {
                     isEdgeActivated: false,
                     func: 'mqttGot',
                     gen: {
-                        arduino: this.mqttGotAr
+                        arduino: this.mqttGotAr,
+                        micropy: this.mqttGotPy
                     }
                 },
                 {
@@ -181,7 +195,19 @@ class IOT {
                     },
                     func: 'mqttData',
                     gen: {
-                        arduino: this.mqttDataAr
+                        arduino: this.mqttDataAr,
+                        micropy: this.mqttDataPy
+                    }
+                },
+                '---',
+                {
+                    opcode: 'iotwork',
+                    blockType: BlockType.COMMAND,
+
+                    text: 'Iot work',
+                    func: 'noop',
+                    gen: {
+                        micropy: this.iotWork_py
                     }
                 },
             ],
@@ -300,6 +326,14 @@ class IOT {
         const code = `iot.connectAP(${ap}, ${pass})`;
         return code;
     }
+    
+    connApPy (gen, block){
+        iotCommonPy(gen);
+        const ap = gen.valueToCode(block, 'AP');
+        let pass = gen.valueToCode(block, 'PASS');
+        let cmd = cmdTrim(`WF 52 2 52 ${ap} ${pass}\\n`);
+        return `uart.write("${cmd}")\n`;
+    }
 
     connAr (gen, block){
         iotCommon(gen);
@@ -313,6 +347,21 @@ class IOT {
             return `iot.mqttConect(${server}, ${cid})`;
         }
     }
+    
+    connPy (gen, block){
+        iotCommonPy(gen);
+        let cmd;
+        const server = gen.valueToCode(block, 'SERVER');
+        const cid = gen.valueToCode(block, 'CLIENTID');
+        const user = gen.valueToCode(block, 'USER');
+        const pass = gen.valueToCode(block, 'PASS');
+        if (user){
+            cmd = cmdTrim(`WF 15 2 15 ${server} ${cid} ${user} ${pass}\\n`);
+        } else {
+            cmd = cmdTrim(`WF 15 2 15 ${server} ${cid}\\n`);
+        }
+        return `uart.write("${cmd}")\n`;
+    }
 
     pubAr (gen, block){
         iotCommon(gen);
@@ -320,11 +369,26 @@ class IOT {
         const data = gen.valueToCode(block, 'DATA');
         return `iot.publish(${topic}, ${data})`;
     }
+    
+    pubPy (gen, block){
+        iotCommonPy(gen);
+        const topic = gen.valueToCode(block, 'TOPIC');
+        const data = gen.valueToCode(block, 'DATA');
+        let cmd =  cmdTrim(`WF 11 4 11 0 0 ${topic} ${data}\\n`);
+        return `uart.write("${cmd}")\n`;
+    }
 
     subAr (gen, block){
         iotCommon(gen);
         const topic = gen.valueToCode(block, 'TOPIC');
         return `iot.subscribe(${topic})`;
+    }
+
+    subPy (gen, block){
+        iotCommonPy(gen);
+        const topic = gen.valueToCode(block, 'TOPIC');
+        let cmd = cmdTrim(`WF 12 2 0 ${topic} 0\n`)
+        return `uart.write("${cmd}")\n`;
     }
 
     mqttGotAr (gen, block){
@@ -338,6 +402,17 @@ class IOT {
         return '';
     }
 
+    mqttGotPy (gen, block){
+        iotCommonPy(gen);
+        const topic = gen.valueToCode(block, 'TOPIC');
+        const callback_ = 'GOT' + topic.replace(/["']/g, '').replace(/\//g, '_');
+        const nextBlock = block.nextConnection && block.nextConnection.targetBlock();
+        let code = gen.blockToCode(nextBlock);
+        code = code.split('\n').map(c => '\t'+c).join('\n');
+        gen.functions_[callback_] = `\ndef ${callback_}(topicData):\n${code}`
+        return '';
+    }
+
     mqttDataAr (gen, block){
         const datatype = gen.valueToCode(block, 'DATATYPE');
         let code = 'topicData';
@@ -347,6 +422,17 @@ class IOT {
             code += '.c_str()';
         }
         return [code, gen.ORDER_ATOMIC];
+    }
+
+    mqttDataPy (gen, block){
+        const datatype = gen.valueToCode(block, 'DATATYPE');
+        let code = 'topicData';
+        return [code, gen.ORDER_ATOMIC];
+    }
+    
+    iotWork_py (gen, block){
+        iotCommonPy(gen);
+        return `iotSerialWork()\n`;
     }
 
 }
