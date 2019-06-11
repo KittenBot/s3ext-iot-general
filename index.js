@@ -356,7 +356,7 @@ class IOT {
         const user = gen.valueToCode(block, 'USER');
         const pass = gen.valueToCode(block, 'PASS');
         if (user){
-            cmd = cmdTrim(`WF 15 2 15 ${server} ${cid} ${user} ${pass}\\n`);
+            cmd = cmdTrim(`WF 15 4 15 ${server} ${cid} ${user} ${pass}\\n`);
         } else {
             cmd = cmdTrim(`WF 15 2 15 ${server} ${cid}\\n`);
         }
@@ -387,7 +387,7 @@ class IOT {
     subPy (gen, block){
         iotCommonPy(gen);
         const topic = gen.valueToCode(block, 'TOPIC');
-        let cmd = cmdTrim(`WF 12 2 0 ${topic} 0\n`)
+        let cmd = cmdTrim(`WF 12 2 0 ${topic} 0\\n`)
         return `uart.write("${cmd}")\n`;
     }
 
@@ -438,15 +438,14 @@ def iotSerialWork():
     if uart.any():
         a = uart.readline()
         linebuf += str(a, 'utf8')
-        if linebuf.endswith('\\r'):
+        if linebuf.endswith('\\n'):
             tmp = linebuf.split(' ')
             linebuf = ''
             if tmp[0] == 'WF':
-                print(tmp)
-                if tmp[1] == '3' and tmp[2] == '5':
-                    topic = tmp[3]
+                if tmp[1] == '3' and tmp[3] == '5':
+                    topic = tmp[4]
                     topic = topic.replace('/', '_')
-                    data = tmp[4].strip()
+                    data = tmp[5].strip()
                     cmdline = 'GOT%s(data)' %topic
                     eval(cmdline, globals(), {'data': data})`
         return `iotSerialWork()\n`;
